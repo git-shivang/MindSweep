@@ -8,13 +8,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function HomeScreen() {
   const router = useRouter();
   const [thoughts, setThoughts] = useState('');
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <Text style={styles.title}>MindSweep</Text>
       <Text style={styles.subtitle}>Clear your mind, capture your tasks</Text>
 
@@ -34,7 +35,7 @@ export default function HomeScreen() {
         onPress={() => router.push('/tasks')}>
         <Text style={styles.buttonText}>Sweep It</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -42,15 +43,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.backgroundDark,
+    justifyContent: 'center',
     paddingHorizontal: 28,
-    paddingTop: 72,
-    paddingBottom: 32,
+    paddingTop: 16,
+    paddingBottom: 80,
   },
   title: {
     fontSize: 40,
     fontWeight: '800',
     color: Colors.textOnDark,
     letterSpacing: -0.5,
+    marginTop: -24,
     marginBottom: 8,
   },
   subtitle: {
