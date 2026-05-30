@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -8,6 +9,7 @@ import {
 } from 'react-native';
 
 export default function HomeScreen() {
+  const router = useRouter();
   const [thoughts, setThoughts] = useState('');
 
   return (
@@ -24,7 +26,10 @@ export default function HomeScreen() {
         textAlignVertical="top"
       />
 
-      <TouchableOpacity style={styles.button} activeOpacity={0.8}>
+      <TouchableOpacity
+        style={styles.button}
+        activeOpacity={0.8}
+        onPress={() => router.push('/tasks')}>
         <Text style={styles.buttonText}>Sweep It</Text>
       </TouchableOpacity>
     </View>
