@@ -1,3 +1,4 @@
+import { Colors } from '@/constants/colors';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -18,6 +19,14 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+const SPACING = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+} as const;
+
 type Priority = 'High' | 'Medium' | 'Low';
 
 type Task = {
@@ -34,13 +43,27 @@ const MOCK_TASKS: Task[] = [
 ];
 
 const PRIORITY_STYLES: Record<Priority, { backgroundColor: string; color: string }> = {
-  High: { backgroundColor: '#fde8e8', color: '#c62828' },
-  Medium: { backgroundColor: '#fff8e1', color: '#f9a825' },
-  Low: { backgroundColor: '#f0f0f0', color: '#616161' },
+  High: { backgroundColor: Colors.priorityHigh, color: Colors.textInverse },
+  Medium: { backgroundColor: Colors.priorityMedium, color: Colors.textPrimary },
+  Low: { backgroundColor: Colors.priorityLow, color: Colors.textInverse },
 };
 
 function animateLayout() {
-  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  LayoutAnimation.configureNext({
+    duration: 300,
+    create: {
+      type: LayoutAnimation.Types.easeInEaseOut,
+      property: LayoutAnimation.Properties.opacity,
+    },
+    update: {
+      type: LayoutAnimation.Types.spring,
+      springDamping: 0.82,
+    },
+    delete: {
+      type: LayoutAnimation.Types.easeInEaseOut,
+      property: LayoutAnimation.Properties.opacity,
+    },
+  });
 }
 
 type TaskCardProps = {
@@ -64,7 +87,7 @@ function TaskCard({
     <TouchableOpacity
       style={[styles.card, isExpanded && styles.cardExpanded]}
       onPress={onPress}
-      activeOpacity={0.9}>
+      activeOpacity={0.92}>
       <View style={styles.cardHeader}>
         <Text
           style={[styles.taskTitle, isComplete && styles.taskTitleComplete]}
@@ -142,11 +165,16 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
-        <Text style={styles.backButtonText}>← Back</Text>
-      </TouchableOpacity>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
 
-      <Text style={styles.title}>Your Tasks</Text>
+        <Text style={styles.title}>Your Tasks</Text>
+        <Text style={styles.subtitle}>
+          {MOCK_TASKS.length} task{MOCK_TASKS.length === 1 ? '' : 's'}
+        </Text>
+      </View>
 
       <FlatList
         data={MOCK_TASKS}
@@ -161,6 +189,7 @@ export default function TasksScreen() {
           />
         )}
         contentContainerStyle={styles.list}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
         showsVerticalScrollIndicator={false}
       />
     </View>
@@ -170,150 +199,168 @@ export default function TasksScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-    paddingTop: 60,
-    paddingHorizontal: 24,
+    backgroundColor: Colors.backgroundDark,
+    paddingTop: 72,
+    paddingHorizontal: SPACING.lg,
+  },
+  header: {
+    marginBottom: SPACING.lg,
   },
   backButton: {
     alignSelf: 'flex-start',
-    marginBottom: 16,
+    marginBottom: SPACING.md,
   },
   backButtonText: {
     fontSize: 16,
-    color: '#4a90d9',
+    color: Colors.primary,
     fontWeight: '600',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 20,
+    fontSize: 32,
+    fontWeight: '800',
+    color: Colors.textOnDark,
+    letterSpacing: -0.5,
+    marginBottom: SPACING.xs,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: Colors.textOnDarkSecondary,
   },
   list: {
-    paddingBottom: 24,
+    paddingBottom: SPACING.xl,
+  },
+  separator: {
+    height: SPACING.md,
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: Colors.cardBackgroundDark,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e8e8e8',
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    borderColor: Colors.cardBorderDark,
+    padding: SPACING.lg,
+    shadowColor: Colors.shadowColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
     overflow: 'hidden',
   },
   cardExpanded: {
-    borderColor: '#4a90d9',
+    borderColor: Colors.primary,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: SPACING.md,
   },
   taskTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: Colors.textOnDark,
+    lineHeight: 24,
   },
   taskTitleComplete: {
     textDecorationLine: 'line-through',
-    color: '#999',
+    color: Colors.textOnDarkTertiary,
   },
   badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 10,
   },
   badgeText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   dueDatePreview: {
-    marginTop: 8,
+    marginTop: SPACING.sm,
     fontSize: 14,
-    color: '#666',
+    color: Colors.textOnDarkSecondary,
   },
   expandedContent: {
-    marginTop: 16,
-    paddingTop: 16,
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    gap: 14,
+    borderTopColor: Colors.cardBorderDark,
+    gap: SPACING.md,
   },
   detailRow: {
-    gap: 4,
+    gap: SPACING.xs,
   },
   detailLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#888',
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textOnDarkTertiary,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   detailValue: {
     fontSize: 16,
-    color: '#1a1a1a',
+    color: Colors.textOnDark,
+    lineHeight: 22,
   },
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginTop: 4,
+    gap: SPACING.md,
+    marginTop: SPACING.xs,
   },
   checkbox: {
     width: 24,
     height: 24,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#4a90d9',
+    borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxChecked: {
-    backgroundColor: '#4a90d9',
+    backgroundColor: Colors.primary,
   },
   checkmark: {
-    color: '#fff',
+    color: Colors.textInverse,
     fontSize: 14,
     fontWeight: '700',
   },
   checkboxLabel: {
     fontSize: 15,
-    color: '#333',
+    color: Colors.textOnDarkSecondary,
   },
   actions: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
+    gap: SPACING.md,
+    marginTop: SPACING.sm,
   },
   editButton: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#4a90d9',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
     alignItems: 'center',
   },
   editButtonText: {
-    color: '#4a90d9',
+    color: Colors.primary,
     fontSize: 15,
     fontWeight: '600',
   },
   deleteButton: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#fde8e8',
+    borderRadius: 12,
+    backgroundColor: Colors.backgroundDarkElevated,
+    borderWidth: 1,
+    borderColor: Colors.error,
     alignItems: 'center',
   },
   deleteButtonText: {
-    color: '#c62828',
+    color: Colors.error,
     fontSize: 15,
     fontWeight: '600',
   },
