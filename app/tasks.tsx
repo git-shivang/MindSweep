@@ -34,12 +34,35 @@ type Task = {
   title: string;
   dueDate: string;
   priority: Priority;
+  completed: boolean;
+  createdAt: number;
 };
 
 const MOCK_TASKS: Task[] = [
-  { id: '1', title: 'Call Rahul', dueDate: 'Tomorrow', priority: 'High' },
-  { id: '2', title: 'Submit BI report', dueDate: 'Friday', priority: 'High' },
-  { id: '3', title: 'Buy groceries', dueDate: 'No due date', priority: 'Low' },
+  {
+    id: '1735689600001',
+    title: 'Call Rahul',
+    dueDate: 'Tomorrow',
+    priority: 'High',
+    completed: false,
+    createdAt: 1735689600001,
+  },
+  {
+    id: '1735776000002',
+    title: 'Submit BI report',
+    dueDate: 'Friday',
+    priority: 'High',
+    completed: false,
+    createdAt: 1735776000002,
+  },
+  {
+    id: '1735862400003',
+    title: 'Buy groceries',
+    dueDate: 'No due date',
+    priority: 'Low',
+    completed: true,
+    createdAt: 1735862400003,
+  },
 ];
 
 const PRIORITY_STYLES: Record<Priority, { backgroundColor: string; color: string }> = {
@@ -47,6 +70,14 @@ const PRIORITY_STYLES: Record<Priority, { backgroundColor: string; color: string
   Medium: { backgroundColor: Colors.priorityMedium, color: Colors.textPrimary },
   Low: { backgroundColor: Colors.priorityLow, color: Colors.textInverse },
 };
+
+function formatCreatedAt(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
 
 function animateLayout() {
   LayoutAnimation.configureNext({
@@ -69,18 +100,11 @@ function animateLayout() {
 type TaskCardProps = {
   task: Task;
   isExpanded: boolean;
-  isComplete: boolean;
   onPress: () => void;
   onToggleComplete: () => void;
 };
 
-function TaskCard({
-  task,
-  isExpanded,
-  isComplete,
-  onPress,
-  onToggleComplete,
-}: TaskCardProps) {
+function TaskCard({ task, isExpanded, onPress, onToggleComplete }: TaskCardProps) {
   const badge = PRIORITY_STYLES[task.priority];
 
   return (
@@ -89,11 +113,21 @@ function TaskCard({
       onPress={onPress}
       activeOpacity={0.92}>
       <View style={styles.cardHeader}>
+        <TouchableOpacity
+          style={styles.checkboxHitArea}
+          onPress={onToggleComplete}
+          activeOpacity={0.7}>
+          <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
+            {task.completed ? <Text style={styles.checkmark}>✓</Text> : null}
+          </View>
+        </TouchableOpacity>
+
         <Text
-          style={[styles.taskTitle, isComplete && styles.taskTitleComplete]}
+          style={[styles.taskTitle, task.completed && styles.taskTitleComplete]}
           numberOfLines={isExpanded ? undefined : 1}>
           {task.title}
         </Text>
+
         <View style={[styles.badge, { backgroundColor: badge.backgroundColor }]}>
           <Text style={[styles.badgeText, { color: badge.color }]}>{task.priority}</Text>
         </View>
@@ -122,17 +156,10 @@ function TaskCard({
             </View>
           </View>
 
-          <TouchableOpacity
-            style={styles.checkboxRow}
-            onPress={onToggleComplete}
-            activeOpacity={0.7}>
-            <View style={[styles.checkbox, isComplete && styles.checkboxChecked]}>
-              {isComplete ? <Text style={styles.checkmark}>✓</Text> : null}
-            </View>
-            <Text style={styles.checkboxLabel}>
-              {isComplete ? 'Completed' : 'Mark complete'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Created on</Text>
+            <Text style={styles.detailValue}>{formatCreatedAt(task.createdAt)}</Text>
+          </View>
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.editButton} activeOpacity={0.7}>
@@ -150,8 +177,8 @@ function TaskCard({
 
 export default function TasksScreen() {
   const router = useRouter();
+  const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [completedIds, setCompletedIds] = useState<Record<string, boolean>>({});
 
   const handleCardPress = (id: string) => {
     animateLayout();
@@ -160,7 +187,11 @@ export default function TasksScreen() {
 
   const handleToggleComplete = (id: string) => {
     animateLayout();
-    setCompletedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === id ? { ...task, completed: !task.completed } : task,
+      ),
+    );
   };
 
   return (
@@ -172,18 +203,18 @@ export default function TasksScreen() {
 
         <Text style={styles.title}>Your Tasks</Text>
         <Text style={styles.subtitle}>
-          {MOCK_TASKS.length} task{MOCK_TASKS.length === 1 ? '' : 's'}
+          {tasks.length} task{tasks.length === 1 ? '' : 's'}
         </Text>
       </View>
 
       <FlatList
-        data={MOCK_TASKS}
+        data={tasks}
         keyExtractor={(item) => item.id}
+        extraData={tasks}
         renderItem={({ item }) => (
           <TaskCard
             task={item}
             isExpanded={expandedId === item.id}
-            isComplete={!!completedIds[item.id]}
             onPress={() => handleCardPress(item.id)}
             onToggleComplete={() => handleToggleComplete(item.id)}
           />
@@ -253,9 +284,11 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: SPACING.md,
+  },
+  checkboxHitArea: {
+    paddingTop: 2,
   },
   taskTitle: {
     flex: 1,
@@ -305,12 +338,6 @@ const styles = StyleSheet.create({
     color: Colors.textOnDark,
     lineHeight: 22,
   },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    marginTop: SPACING.xs,
-  },
   checkbox: {
     width: 24,
     height: 24,
@@ -327,10 +354,6 @@ const styles = StyleSheet.create({
     color: Colors.textInverse,
     fontSize: 14,
     fontWeight: '700',
-  },
-  checkboxLabel: {
-    fontSize: 15,
-    color: Colors.textOnDarkSecondary,
   },
   actions: {
     flexDirection: 'row',
