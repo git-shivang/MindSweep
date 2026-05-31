@@ -1,8 +1,15 @@
 import { Colors } from '@/constants/colors';
 import { ExtractedTask } from '@/services/groqService';
 import { deleteTask, loadTasks, StoredTask, updateTask } from '@/services/storageService';
+import * as Haptics from 'expo-haptics';
 import { useRoute } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
@@ -10,15 +17,13 @@ import {
   Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   UIManager,
   View,
 } from 'react-native';
 
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
@@ -38,6 +43,12 @@ type TasksRouteParams = {
 
 type Task = StoredTask;
 
+type EditDraft = {
+  title: string;
+  dueDate: string;
+  priority: Priority;
+};
+
 function mapExtractedToTasks(extracted: ExtractedTask[]): Task[] {
   const now = Date.now();
   return extracted.map((item, index) => ({
@@ -53,7 +64,6 @@ function mapExtractedToTasks(extracted: ExtractedTask[]): Task[] {
 function parseTasksFromParams(tasksParam: string | string[] | undefined): Task[] | null {
   const raw = Array.isArray(tasksParam) ? tasksParam[0] : tasksParam;
   if (!raw) return null;
-
   try {
     const parsed = JSON.parse(raw) as ExtractedTask[];
     if (!Array.isArray(parsed)) return null;
@@ -90,11 +100,19 @@ const MOCK_TASKS: Task[] = [
   },
 ];
 
-const PRIORITY_STYLES: Record<Priority, { backgroundColor: string; color: string }> = {
-  High: { backgroundColor: Colors.priorityHigh, color: Colors.textInverse },
-  Medium: { backgroundColor: Colors.priorityMedium, color: Colors.textPrimary },
-  Low: { backgroundColor: Colors.priorityLow, color: Colors.textInverse },
+const PRIORITY_COLORS: Record<Priority, string> = {
+  High: Colors.priorityHigh,
+  Medium: Colors.priorityMedium,
+  Low: Colors.priorityLow,
 };
+
+const PRIORITY_TEXT_COLORS: Record<Priority, string> = {
+  High: Colors.textInverse,
+  Medium: Colors.textPrimary,
+  Low: Colors.textInverse,
+};
+
+const PRIORITIES: Priority[] = ['High', 'Medium', 'Low'];
 
 function formatCreatedAt(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString('en-US', {
@@ -106,14 +124,14 @@ function formatCreatedAt(timestamp: number): string {
 
 function animateLayout() {
   LayoutAnimation.configureNext({
-    duration: 300,
+    duration: 280,
     create: {
       type: LayoutAnimation.Types.easeInEaseOut,
       property: LayoutAnimation.Properties.opacity,
     },
     update: {
       type: LayoutAnimation.Types.spring,
-      springDamping: 0.82,
+      springDamping: 0.85,
     },
     delete: {
       type: LayoutAnimation.Types.easeInEaseOut,
@@ -125,19 +143,42 @@ function animateLayout() {
 type TaskCardProps = {
   task: Task;
   isExpanded: boolean;
+  isEditing: boolean;
+  editDraft: EditDraft;
   onPress: () => void;
   onToggleComplete: () => void;
   onDelete: () => void;
+  onEditStart: () => void;
+  onEditChange: (field: keyof EditDraft, value: string) => void;
+  onEditSave: () => void;
+  onEditCancel: () => void;
 };
 
-function TaskCard({ task, isExpanded, onPress, onToggleComplete, onDelete }: TaskCardProps) {
-  const badge = PRIORITY_STYLES[task.priority];
+function TaskCard({
+  task,
+  isExpanded,
+  isEditing,
+  editDraft,
+  onPress,
+  onToggleComplete,
+  onDelete,
+  onEditStart,
+  onEditChange,
+  onEditSave,
+  onEditCancel,
+}: TaskCardProps) {
+  const priorityColor = PRIORITY_COLORS[task.priority];
+  const priorityTextColor = PRIORITY_TEXT_COLORS[task.priority];
+  const canSave = editDraft.title.trim().length > 0;
 
   return (
     <TouchableOpacity
       style={[styles.card, isExpanded && styles.cardExpanded]}
       onPress={onPress}
-      activeOpacity={0.92}>
+      activeOpacity={0.9}>
+
+      <View style={[styles.priorityStripe, { backgroundColor: priorityColor }]} />
+
       <View style={styles.cardHeader}>
         <TouchableOpacity
           style={styles.checkboxHitArea}
@@ -154,52 +195,147 @@ function TaskCard({ task, isExpanded, onPress, onToggleComplete, onDelete }: Tas
           {task.title}
         </Text>
 
-        <View style={[styles.badge, { backgroundColor: badge.backgroundColor }]}>
-          <Text style={[styles.badgeText, { color: badge.color }]}>{task.priority}</Text>
+        <View style={[styles.badge, { backgroundColor: priorityColor }]}>
+          <Text style={[styles.badgeText, { color: priorityTextColor }]}>{task.priority}</Text>
         </View>
       </View>
 
-      {!isExpanded && task.dueDate ? (
-        <Text style={styles.dueDatePreview}>Due: {task.dueDate}</Text>
+      {!isExpanded && task.dueDate && task.dueDate !== 'No due date' ? (
+        <Text style={styles.dueDatePreview}>📅 {task.dueDate}</Text>
       ) : null}
 
       {isExpanded ? (
         <View style={styles.expandedContent}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Title</Text>
-            <Text style={styles.detailValue}>{task.title}</Text>
-          </View>
+          {isEditing ? (
+            // ── Edit mode ─────────────────────────────────────
+            <View style={styles.editForm}>
+              <View style={styles.editField}>
+                <Text style={styles.detailLabel}>Title</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editDraft.title}
+                  onChangeText={(v) => onEditChange('title', v)}
+                  placeholder="Task title"
+                  placeholderTextColor={Colors.textOnDarkTertiary}
+                  multiline
+                  autoFocus
+                />
+              </View>
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Due date</Text>
-            <Text style={styles.detailValue}>{task.dueDate}</Text>
-          </View>
+              <View style={styles.editField}>
+                <Text style={styles.detailLabel}>Due date</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editDraft.dueDate}
+                  onChangeText={(v) => onEditChange('dueDate', v)}
+                  placeholder="e.g. Tomorrow, Friday, No due date"
+                  placeholderTextColor={Colors.textOnDarkTertiary}
+                />
+              </View>
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Priority</Text>
-            <View style={[styles.badge, { backgroundColor: badge.backgroundColor }]}>
-              <Text style={[styles.badgeText, { color: badge.color }]}>{task.priority}</Text>
+              <View style={styles.editField}>
+                <Text style={styles.detailLabel}>Priority</Text>
+                <View style={styles.prioritySelector}>
+                  {PRIORITIES.map((p) => {
+                    const active = editDraft.priority === p;
+                    return (
+                      <TouchableOpacity
+                        key={p}
+                        style={[
+                          styles.priorityPill,
+                          { borderColor: PRIORITY_COLORS[p] },
+                          active && { backgroundColor: PRIORITY_COLORS[p] },
+                        ]}
+                        onPress={() => onEditChange('priority', p)}
+                        activeOpacity={0.75}>
+                        <Text
+                          style={[
+                            styles.priorityPillText,
+                            { color: active ? PRIORITY_TEXT_COLORS[p] : Colors.textOnDarkSecondary },
+                          ]}>
+                          {p}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.editActions}>
+                <TouchableOpacity
+                  style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
+                  onPress={onEditSave}
+                  disabled={!canSave}
+                  activeOpacity={0.8}>
+                  <Text style={styles.saveButtonText}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.cancelEditButton}
+                  onPress={onEditCancel}
+                  activeOpacity={0.75}>
+                  <Text style={styles.cancelEditButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          ) : (
+            // ── View mode ─────────────────────────────────────
+            <>
+              <View style={styles.detailGrid}>
+                <View style={styles.detailCell}>
+                  <Text style={styles.detailLabel}>Due date</Text>
+                  <Text style={styles.detailValue}>{task.dueDate}</Text>
+                </View>
+                <View style={styles.detailCell}>
+                  <Text style={styles.detailLabel}>Priority</Text>
+                  <View style={[styles.badgeSmall, { backgroundColor: priorityColor }]}>
+                    <Text style={[styles.badgeText, { color: priorityTextColor }]}>{task.priority}</Text>
+                  </View>
+                </View>
+                <View style={styles.detailCell}>
+                  <Text style={styles.detailLabel}>Created on</Text>
+                  <Text style={styles.detailValue}>{formatCreatedAt(task.createdAt)}</Text>
+                </View>
+                <View style={styles.detailCell}>
+                  <Text style={styles.detailLabel}>Status</Text>
+                  <Text style={styles.detailValue}>{task.completed ? 'Done' : 'Pending'}</Text>
+                </View>
+              </View>
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Created on</Text>
-            <Text style={styles.detailValue}>{formatCreatedAt(task.createdAt)}</Text>
-          </View>
-
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.editButton} activeOpacity={0.7}>
-              <Text style={styles.editButtonText}>Edit</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.deleteButton} onPress={onDelete} activeOpacity={0.7}>
-              <Text style={styles.deleteButtonText}>Delete</Text>
-            </TouchableOpacity>
-          </View>
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={onEditStart}
+                  activeOpacity={0.75}>
+                  <Text style={styles.editButtonText}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={onDelete}
+                  activeOpacity={0.75}>
+                  <Text style={styles.deleteButtonText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
         </View>
       ) : null}
     </TouchableOpacity>
   );
 }
+
+function EmptyState() {
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyIcon}>🌿</Text>
+      <Text style={styles.emptyTitle}>All clear</Text>
+      <Text style={styles.emptySubtitle}>
+        No tasks yet. Go back and sweep your thoughts to get started.
+      </Text>
+    </View>
+  );
+}
+
+const EMPTY_DRAFT: EditDraft = { title: '', dueDate: '', priority: 'Medium' };
 
 export default function TasksScreen() {
   const router = useRouter();
@@ -214,37 +350,60 @@ export default function TasksScreen() {
 
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft>(EMPTY_DRAFT);
 
-  // Load from storage on mount if no params
+  // ── Animations ──────────────────────────────────────────────
+  const headerOpacity = useSharedValue(0);
+  const headerTranslateY = useSharedValue(-12);
+  const listOpacity = useSharedValue(0);
+  const listTranslateY = useSharedValue(24);
+
   useEffect(() => {
-    if (tasksParam) return;
-
-    const loadFromStorage = async () => {
-      const stored = await loadTasks();
-      if (stored && stored.length > 0) {
-        setTasks(stored);
-      }
-      // If nothing in storage either, initialTasks already has MOCK_TASKS
-    };
-
-    loadFromStorage();
+    headerOpacity.value = withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) });
+    headerTranslateY.value = withTiming(0, { duration: 380, easing: Easing.out(Easing.cubic) });
+    listOpacity.value = withTiming(1, { duration: 480, easing: Easing.out(Easing.cubic) });
+    listTranslateY.value = withTiming(0, { duration: 480, easing: Easing.out(Easing.cubic) });
   }, []);
 
-  // Sync when new tasks arrive via params
+  const headerStyle = useAnimatedStyle(() => ({
+    opacity: headerOpacity.value,
+    transform: [{ translateY: headerTranslateY.value }],
+  }));
+
+  const listStyle = useAnimatedStyle(() => ({
+    opacity: listOpacity.value,
+    transform: [{ translateY: listTranslateY.value }],
+  }));
+  // ────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (tasksParam) return;
+    loadTasks().then((stored) => {
+      if (stored && stored.length > 0) setTasks(stored);
+    });
+  }, []);
+
   useEffect(() => {
     const parsed = parseTasksFromParams(tasksParam);
     if (parsed) {
       setTasks(parsed);
       setExpandedId(null);
+      setEditingId(null);
     }
   }, [tasksParam]);
 
+  const completedCount = tasks.filter((t) => t.completed).length;
+
   const handleCardPress = (id: string) => {
+    // Cancel any active edit when the user navigates between cards
+    if (editingId) setEditingId(null);
     animateLayout();
     setExpandedId((current) => (current === id ? null : id));
   };
 
   const handleToggleComplete = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     animateLayout();
     setTasks((prev) =>
       prev.map((task) => {
@@ -257,41 +416,90 @@ export default function TasksScreen() {
   };
 
   const handleDelete = (id: string) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     animateLayout();
     setTasks((prev) => prev.filter((task) => task.id !== id));
     deleteTask(id);
+    if (editingId === id) setEditingId(null);
+  };
+
+  const handleEditStart = (task: Task) => {
+    setEditDraft({ title: task.title, dueDate: task.dueDate, priority: task.priority });
+    animateLayout();
+    setEditingId(task.id);
+  };
+
+  const handleEditChange = (field: keyof EditDraft, value: string) => {
+    setEditDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleEditSave = (id: string) => {
+    if (!editDraft.title.trim()) return;
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+
+    const updated: Task = {
+      ...task,
+      title: editDraft.title.trim(),
+      dueDate: editDraft.dueDate.trim() || 'No due date',
+      priority: editDraft.priority,
+    };
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    animateLayout();
+    setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    updateTask(updated);
+    setEditingId(null);
+  };
+
+  const handleEditCancel = () => {
+    animateLayout();
+    setEditingId(null);
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
+      <Animated.View style={[styles.header, headerStyle]}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+          activeOpacity={0.7}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-
         <Text style={styles.title}>Your Tasks</Text>
-        <Text style={styles.subtitle}>
-          {tasks.length} task{tasks.length === 1 ? '' : 's'}
-        </Text>
-      </View>
+        <Text style={styles.subtitle}>{completedCount}/{tasks.length} completed</Text>
+      </Animated.View>
 
-      <FlatList
-        data={tasks}
-        keyExtractor={(item, index) => item.id ?? `task-${index}`}
-        extraData={tasks}
-        renderItem={({ item }) => (
-          <TaskCard
-            task={item}
-            isExpanded={expandedId === item.id}
-            onPress={() => handleCardPress(item.id)}
-            onToggleComplete={() => handleToggleComplete(item.id)}
-            onDelete={() => handleDelete(item.id)}
+      {tasks.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <Animated.View style={[styles.listContainer, listStyle]}>
+          <FlatList
+            data={tasks}
+            keyExtractor={(item, index) => item.id ?? `task-${index}`}
+            extraData={[tasks, expandedId, editingId, editDraft]}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <TaskCard
+                task={item}
+                isExpanded={expandedId === item.id}
+                isEditing={editingId === item.id}
+                editDraft={editDraft}
+                onPress={() => handleCardPress(item.id)}
+                onToggleComplete={() => handleToggleComplete(item.id)}
+                onDelete={() => handleDelete(item.id)}
+                onEditStart={() => handleEditStart(item)}
+                onEditChange={handleEditChange}
+                onEditSave={() => handleEditSave(item.id)}
+                onEditCancel={handleEditCancel}
+              />
+            )}
+            contentContainerStyle={styles.list}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            showsVerticalScrollIndicator={false}
           />
-        )}
-        contentContainerStyle={styles.list}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        showsVerticalScrollIndicator={false}
-      />
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -301,14 +509,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.backgroundDark,
     paddingTop: 72,
-    paddingHorizontal: SPACING.lg,
   },
   header: {
+    paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
   },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: SPACING.md,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
   },
   backButtonText: {
     fontSize: 16,
@@ -316,40 +526,53 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   title: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: '800',
     color: Colors.textOnDark,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
     marginBottom: SPACING.xs,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.textOnDarkSecondary,
+    fontWeight: '500',
+  },
+  listContainer: {
+    flex: 1,
   },
   list: {
+    paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xl,
   },
   separator: {
-    height: SPACING.md,
+    height: 12,
   },
   card: {
     backgroundColor: Colors.cardBackgroundDark,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: Colors.cardBorderDark,
     padding: SPACING.lg,
-    shadowColor: Colors.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
+    paddingLeft: SPACING.lg + 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
     overflow: 'hidden',
   },
   cardExpanded: {
     borderColor: Colors.primary,
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    elevation: 7,
+  },
+  priorityStripe: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -359,31 +582,56 @@ const styles = StyleSheet.create({
   checkboxHitArea: {
     paddingTop: 2,
   },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  checkmark: {
+    color: Colors.textInverse,
+    fontSize: 13,
+    fontWeight: '800',
+  },
   taskTitle: {
     flex: 1,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
     color: Colors.textOnDark,
-    lineHeight: 24,
+    lineHeight: 23,
   },
   taskTitleComplete: {
     textDecorationLine: 'line-through',
     color: Colors.textOnDarkTertiary,
   },
   badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  badgeSmall: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
   },
   badgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
   },
   dueDatePreview: {
     marginTop: SPACING.sm,
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textOnDarkSecondary,
+    marginLeft: 40,
   },
   expandedContent: {
     marginTop: SPACING.md,
@@ -392,46 +640,37 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.cardBorderDark,
     gap: SPACING.md,
   },
-  detailRow: {
+  // ── View mode ──
+  detailGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.md,
+  },
+  detailCell: {
+    minWidth: '42%',
+    flex: 1,
     gap: SPACING.xs,
   },
   detailLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: Colors.textOnDarkTertiary,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 0.9,
   },
   detailValue: {
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.textOnDark,
-    lineHeight: 22,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: Colors.primary,
-  },
-  checkmark: {
-    color: Colors.textInverse,
-    fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '500',
+    lineHeight: 21,
   },
   actions: {
     flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.sm,
+    gap: SPACING.sm,
   },
   editButton: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderRadius: 12,
     borderWidth: 1.5,
     borderColor: Colors.primary,
@@ -439,12 +678,12 @@ const styles = StyleSheet.create({
   },
   editButtonText: {
     color: Colors.primary,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   deleteButton: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderRadius: 12,
     backgroundColor: Colors.backgroundDarkElevated,
     borderWidth: 1,
@@ -453,7 +692,97 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     color: Colors.error,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
+  },
+  // ── Edit mode ──
+  editForm: {
+    gap: SPACING.md,
+  },
+  editField: {
+    gap: SPACING.xs + 2,
+  },
+  editInput: {
+    backgroundColor: Colors.backgroundDarkElevated,
+    borderWidth: 1.5,
+    borderColor: Colors.cardBorderDark,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: Colors.textOnDark,
+    lineHeight: 22,
+  },
+  prioritySelector: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  priorityPill: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+  },
+  priorityPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  saveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+  },
+  saveButtonDisabled: {
+    opacity: 0.45,
+  },
+  saveButtonText: {
+    color: Colors.textInverse,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  cancelEditButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.cardBorderDark,
+    alignItems: 'center',
+  },
+  cancelEditButtonText: {
+    color: Colors.textOnDarkSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // ── Empty state ──
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 48,
+    paddingBottom: 80,
+  },
+  emptyIcon: {
+    fontSize: 52,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.textOnDark,
+    marginBottom: 10,
+  },
+  emptySubtitle: {
+    fontSize: 15,
+    color: Colors.textOnDarkSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });

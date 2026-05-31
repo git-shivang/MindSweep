@@ -1,41 +1,59 @@
 export const Colors = {
-  // Primary & Secondary
-  primary: '#6366F1', // Indigo (modern, not too bright blue)
-  primaryDark: '#4F46E5', // Darker indigo for pressed states
-  secondary: '#10B981', // Emerald green
+  // ── Primary ────────────────────────────────────────────────
+  primary: '#6366F1',          // Indigo — buttons, accents, active states
+  primaryLight: '#c0c1ff',     // Light primary — icons / text on dark surfaces
+  primaryContainer: '#8083ff', // Filled container variant
 
-  // Backgrounds
-  background: '#FFFFFF', // White
-  backgroundSecondary: '#F9FAFB', // Light gray
-  backgroundTertiary: '#F3F4F6', // Slightly darker gray
+  // ── Backgrounds & Surfaces ─────────────────────────────────
+  background: '#0c141f',           // Base layer (deepest)
+  backgroundDim: '#070e19',        // Below base (scrims, bottom sheets)
+  backgroundDark: '#0c141f',       // Alias kept for existing references
+  backgroundDarkElevated: '#232a36',
 
-  // Text
-  textPrimary: '#1F2937', // Dark gray (for main text)
-  textSecondary: '#6B7280', // Medium gray (for secondary text)
-  textTertiary: '#9CA3AF', // Light gray (for hints/placeholders)
-  textInverse: '#FFFFFF', // White (on dark backgrounds)
+  surfaceLow: '#151c27',           // Subtle elevation above base
+  surfaceContainer: '#19202b',     // Cards, containers
+  surfaceContainerHigh: '#232a36', // Elevated cards, modals
+  surfaceContainerHighest: '#2e3541',
+  surfaceBright: '#323946',        // Highest elevation
 
-  // Priority Colors
-  priorityHigh: '#EF4444', // Red
-  priorityMedium: '#F59E0B', // Amber/Yellow
-  priorityLow: '#6B7280', // Gray
+  // Card shorthand aliases (used throughout the app)
+  cardBackgroundDark: '#19202b',
+  cardBorderDark: '#464554',
 
-  // Status Colors
-  success: '#10B981', // Green
-  warning: '#F59E0B', // Yellow
-  error: '#EF4444', // Red
+  // ── Text ───────────────────────────────────────────────────
+  onSurface: '#dce2f3',         // Primary text
+  onSurfaceVariant: '#c7c4d7',  // Secondary text
+  outline: '#908fa0',           // Placeholders, tertiary text
+  outlineVariant: '#464554',    // Borders, dividers
 
-  // Cards & Borders
+  // Aliases kept for existing references
+  textOnDark: '#dce2f3',
+  textOnDarkSecondary: '#c7c4d7',
+  textOnDarkTertiary: '#908fa0',
+  textInverse: '#ffffff',
+  textPrimary: '#1F2937',      // For text on light surfaces
+
+  // ── Priority ───────────────────────────────────────────────
+  priorityHigh: '#EF4444',
+  priorityMedium: '#F59E0B',
+  priorityLow: '#6B7280',
+
+  // ── Semantic ───────────────────────────────────────────────
+  error: '#ffb4ab',            // M3 dark-theme error — readable on dark
+  errorContainer: '#93000a',
+  success: '#10B981',
+  shadowColor: '#000000',
+
+  // ── Legacy (kept for backward compatibility) ───────────────
+  primaryDark: '#4F46E5',
+  secondary: '#10B981',
+  background2: '#FFFFFF',
+  backgroundSecondary: '#F9FAFB',
+  backgroundTertiary: '#F3F4F6',
+  textPrimaryLight: '#1F2937',
+  textSecondary: '#6B7280',
+  textTertiary: '#9CA3AF',
   cardBackground: '#FFFFFF',
-  cardBorder: '#E5E7EB', // Light gray border
-  shadowColor: '#000000', // For shadows
-
-  // Dark theme (matte grey — no pure black)
-  backgroundDark: '#1C1C1E',
-  backgroundDarkElevated: '#252528',
-  cardBackgroundDark: '#2C2C2E',
-  cardBorderDark: '#3D3D42',
-  textOnDark: '#F5F5F7',
-  textOnDarkSecondary: '#C7C7CC',
-  textOnDarkTertiary: '#8E8E93',
+  cardBorder: '#E5E7EB',
+  warning: '#F59E0B',
 };
