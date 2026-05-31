@@ -1,7 +1,9 @@
 import { TASK_EXTRACTION_PROMPT } from '@/constants/prompts';
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_WHISPER_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_WHISPER_MODEL = 'whisper-large-v3-turbo';
 
 export type ExtractedTask = {
   title: string;
@@ -197,4 +199,51 @@ export async function extractTasksFromGroq(brainDump: string): Promise<Extracted
   }
 
   return parseTasksFromContent(content);
+}
+
+export async function transcribeAudio(uri: string): Promise<string> {
+  const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY;
+  if (!apiKey?.trim()) {
+    throw new GroqServiceError(
+      'Groq API key is missing. Set EXPO_PUBLIC_GROQ_API_KEY in your .env file.',
+      'MISSING_API_KEY',
+    );
+  }
+
+  const formData = new FormData();
+  // M4A is an MPEG-4 audio container — Groq requires the audio/mp4 MIME type
+  formData.append('file', { uri, type: 'audio/mp4', name: 'recording.m4a' } as any);
+  formData.append('model', GROQ_WHISPER_MODEL);
+  formData.append('response_format', 'json');
+
+  let response: Response;
+  try {
+    response = await fetch(GROQ_WHISPER_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey.trim()}` },
+      body: formData,
+    });
+  } catch (error) {
+    throw new GroqServiceError('Network error during transcription.', 'NETWORK', error);
+  }
+
+  let data: { text?: string; error?: { message?: string } };
+  try {
+    data = await response.json();
+  } catch (error) {
+    throw new GroqServiceError('Failed to read transcription response.', 'API', error);
+  }
+
+  if (!response.ok) {
+    const message = data.error?.message ?? `Transcription failed with status ${response.status}.`;
+    console.error('[Groq Whisper] error', response.status, JSON.stringify(data));
+    throw new GroqServiceError(message, 'API', data);
+  }
+
+  const text = data.text?.trim();
+  if (!text) {
+    throw new GroqServiceError('Transcription returned empty text.', 'PARSE', data);
+  }
+
+  return text;
 }
