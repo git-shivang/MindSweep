@@ -24,7 +24,11 @@ const APP_THEME = {
 
 export default function RootLayout() {
   useEffect(() => {
-    SplashScreen.hideAsync();
+    // Hold the splash for at least 1.5 s so it's visible on fast devices
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync();
+    }, 1500);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
