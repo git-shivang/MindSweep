@@ -1,6 +1,8 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { loadTasks, StoredTask } from '@/services/storageService';
+import { getUserName, saveUserName, clearUserName, getInitials } from '@/services/userService';
+import { clearAllTasks } from '@/services/storageService';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
@@ -12,10 +14,12 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -121,18 +125,45 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [tasks, setTasks] = useState<StoredTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteInput, setDeleteInput] = useState('');
 
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(14);
 
   useEffect(() => {
-    loadTasks().then((t) => {
+    Promise.all([loadTasks(), getUserName()]).then(([t, name]) => {
       setTasks(t);
+      setUserName(name ?? '');
       setLoading(false);
       opacity.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) });
       translateY.value = withTiming(0, { duration: 400, easing: Easing.out(Easing.cubic) });
     });
   }, []);
+
+  const handleEditStart = () => {
+    setEditDraft(userName);
+    setIsEditing(true);
+  };
+
+  const handleEditSave = async () => {
+    const trimmed = editDraft.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    await saveUserName(trimmed);
+    setUserName(trimmed);
+    setIsEditing(false);
+    setSaving(false);
+  };
+
+  const handleEditCancel = () => {
+    setIsEditing(false);
+    setEditDraft('');
+  };
 
   const contentStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -142,7 +173,7 @@ export default function ProfileScreen() {
   const stats = calcStats(tasks);
 
   const handleViewCompleted = () => {
-    router.push('/(tabs)/tasks');
+    router.push('/(tabs)/tasks?filter=completed');
   };
 
   const exportFile = async (filename: string, content: string, mimeType: string, dialogTitle: string) => {
@@ -165,6 +196,17 @@ export default function ProfileScreen() {
     } catch (e: any) {
       Alert.alert('Export failed', e?.message ?? 'An unknown error occurred.');
     }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteInput.toLowerCase().trim() !== 'bye') return;
+    await Promise.all([clearUserName(), clearAllTasks()]);
+    router.replace('/onboarding');
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteConfirm(false);
+    setDeleteInput('');
   };
 
   const handleExportJSON = () => {
@@ -214,10 +256,53 @@ export default function ProfileScreen() {
           {/* ── Avatar ── */}
           <View style={styles.avatarSection}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarInitials}>SR</Text>
+              <Text style={styles.avatarInitials}>
+                {userName ? getInitials(userName) : '?'}
+              </Text>
             </View>
-            <Text style={styles.displayName}>Shivang Rai</Text>
-            <Text style={styles.displaySub}>MindSweep User</Text>
+
+            {isEditing ? (
+              <View style={styles.editNameWrapper}>
+                <TextInput
+                  style={styles.editNameInput}
+                  value={editDraft}
+                  onChangeText={setEditDraft}
+                  placeholder="Your name"
+                  placeholderTextColor={Colors.outline}
+                  autoFocus
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+                <View style={styles.editNameActions}>
+                  <TouchableOpacity
+                    style={[styles.editNameBtn, styles.editNameSave, !editDraft.trim() && { opacity: 0.45 }]}
+                    onPress={handleEditSave}
+                    disabled={!editDraft.trim() || saving}
+                    activeOpacity={0.8}>
+                    {saving
+                      ? <ActivityIndicator size="small" color={Colors.textInverse} />
+                      : <Text style={styles.editNameSaveText}>Save</Text>}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.editNameBtn, styles.editNameCancel]}
+                    onPress={handleEditCancel}
+                    activeOpacity={0.75}>
+                    <Text style={styles.editNameCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.displayName}>{userName || 'MindSweep User'}</Text>
+                <TouchableOpacity
+                  style={styles.editProfileBtn}
+                  onPress={handleEditStart}
+                  activeOpacity={0.75}>
+                  <MaterialIcons name="edit" size={13} color={Colors.primaryLight} />
+                  <Text style={styles.editProfileBtnText}>Edit Name</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
 
           {/* ── Stats ── */}
@@ -268,6 +353,55 @@ export default function ProfileScreen() {
             <InfoRow label="Last Task Added" value={stats.lastSyncLabel} />
             <View style={styles.divider} />
             <InfoRow label="Storage Used" value={loading ? '—' : formatBytes(stats.storageBytes)} />
+          </View>
+
+          {/* ── Danger zone ── */}
+          <View style={styles.dangerCard}>
+            {showDeleteConfirm ? (
+              <View style={styles.deleteConfirmWrapper}>
+                <Text style={styles.deleteConfirmTitle}>Type <Text style={styles.deleteConfirmKeyword}>"bye"</Text> to delete</Text>
+                <TextInput
+                  style={styles.deleteConfirmInput}
+                  value={deleteInput}
+                  onChangeText={setDeleteInput}
+                  placeholder="bye"
+                  placeholderTextColor={Colors.error + '55'}
+                  autoFocus
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onSubmitEditing={handleDeleteConfirm}
+                />
+                <View style={styles.deleteConfirmActions}>
+                  <TouchableOpacity
+                    style={[styles.deleteConfirmBtn, deleteInput.toLowerCase().trim() !== 'bye' && { opacity: 0.4 }]}
+                    onPress={handleDeleteConfirm}
+                    disabled={deleteInput.toLowerCase().trim() !== 'bye'}
+                    activeOpacity={0.8}>
+                    <Text style={styles.deleteConfirmBtnText}>Delete</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteCancelBtn}
+                    onPress={handleDeleteCancel}
+                    activeOpacity={0.75}>
+                    <Text style={styles.deleteCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.deleteRow}
+                onPress={() => setShowDeleteConfirm(true)}
+                activeOpacity={0.75}>
+                <View style={styles.deleteIcon}>
+                  <MaterialIcons name="delete-forever" size={18} color={Colors.error} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.deleteLabel}>Delete Profile</Text>
+                  <Text style={styles.deleteSub}>Erase all data and restart</Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color={Colors.error} />
+              </TouchableOpacity>
+            )}
           </View>
 
         </Animated.View>
@@ -341,11 +475,66 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.onSurface,
     letterSpacing: -0.3,
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  displaySub: {
+  editProfileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    backgroundColor: Colors.surfaceContainer,
+  },
+  editProfileBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.primaryLight,
+  },
+  editNameWrapper: {
+    width: '100%',
+    gap: 10,
+    marginTop: 4,
+  },
+  editNameInput: {
+    backgroundColor: Colors.surfaceContainer,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 16,
+    color: Colors.onSurface,
+    textAlign: 'center',
+  },
+  editNameActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editNameBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  editNameSave: {
+    backgroundColor: Colors.primary,
+  },
+  editNameSaveText: {
     fontSize: 14,
-    color: Colors.outline,
+    fontWeight: '700',
+    color: Colors.textInverse,
+  },
+  editNameCancel: {
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+  },
+  editNameCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.onSurfaceVariant,
   },
 
   // Section header
@@ -433,6 +622,96 @@ const styles = StyleSheet.create({
   actionSublabel: {
     fontSize: 12,
     color: Colors.outline,
+  },
+
+  // Danger zone
+  dangerCard: {
+    backgroundColor: 'rgba(255, 180, 171, 0.06)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.error + '40',
+    overflow: 'hidden',
+    marginBottom: SPACING.lg,
+  },
+  deleteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+  },
+  deleteIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 180, 171, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.error,
+  },
+  deleteSub: {
+    fontSize: 12,
+    color: Colors.error,
+    opacity: 0.65,
+    marginTop: 2,
+  },
+  deleteConfirmWrapper: {
+    padding: SPACING.md,
+    gap: SPACING.sm,
+  },
+  deleteConfirmTitle: {
+    fontSize: 14,
+    color: Colors.onSurfaceVariant,
+    fontWeight: '500',
+  },
+  deleteConfirmKeyword: {
+    color: Colors.error,
+    fontWeight: '700',
+  },
+  deleteConfirmInput: {
+    backgroundColor: Colors.backgroundDim,
+    borderWidth: 1.5,
+    borderColor: Colors.error + '66',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: Colors.error,
+    fontWeight: '600',
+  },
+  deleteConfirmActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  deleteConfirmBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: Colors.error,
+    alignItems: 'center',
+  },
+  deleteConfirmBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textInverse,
+  },
+  deleteCancelBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    alignItems: 'center',
+  },
+  deleteCancelBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.onSurfaceVariant,
   },
 
   // Info row

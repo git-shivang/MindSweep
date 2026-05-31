@@ -1,8 +1,9 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { deleteTask, loadTasks, StoredTask, updateTask } from '@/services/storageService';
+import { getUserName, getInitials } from '@/services/userService';
 import * as Haptics from 'expo-haptics';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -280,11 +281,13 @@ const EMPTY_DRAFT: EditDraft = { title: '', dueDate: '', priority: 'Medium' };
 
 export default function TasksScreen() {
   const router = useRouter();
+  const { filter } = useLocalSearchParams<{ filter?: FilterType }>();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [initials, setInitials] = useState('?');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>(EMPTY_DRAFT);
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [activeFilter, setActiveFilter] = useState<FilterType>(filter ?? 'all');
   const [activeSort, setActiveSort] = useState<SortType>('status');
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -293,7 +296,9 @@ export default function TasksScreen() {
   useFocusEffect(
     useCallback(() => {
       loadTasks().then((stored) => setTasks(stored));
-    }, []),
+      getUserName().then((name) => setInitials(name ? getInitials(name) : '?'));
+      setActiveFilter(filter ?? 'all');
+    }, [filter]),
   );
 
   const counts = useMemo(() => ({
@@ -411,7 +416,7 @@ export default function TasksScreen() {
       <Animated.View style={[styles.navBar, headerStyle]}>
         <Text style={styles.navTitle}>MindSweep</Text>
         <TouchableOpacity style={styles.avatar} activeOpacity={0.8} onPress={() => router.push('/profile')}>
-          <Text style={styles.avatarInitials}>SR</Text>
+          <Text style={styles.avatarInitials}>{initials}</Text>
         </TouchableOpacity>
       </Animated.View>
 

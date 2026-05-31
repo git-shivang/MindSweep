@@ -7,7 +7,7 @@ import {
   transcribeAudio,
 } from '@/services/groqService';
 import { loadTasks, saveTasks, StoredTask } from '@/services/storageService';
-// loadTasks still used inside handleSweepIt for merging with existing tasks
+import { getUserName, getInitials } from '@/services/userService';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -105,6 +105,7 @@ export default function HomeScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [initials, setInitials] = useState('?');
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingStartRef = useRef<number>(0);
 
@@ -157,6 +158,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       loadTasks().then((tasks) => setSavedTaskCount(tasks.filter((t) => !t.completed).length));
+      getUserName().then((name) => setInitials(name ? getInitials(name) : '?'));
     }, []),
   );
 
@@ -285,7 +287,7 @@ export default function HomeScreen() {
           <Text style={styles.headerBrand}>MindSweep</Text>
         </View>
         <TouchableOpacity style={styles.avatar} activeOpacity={0.8} onPress={() => router.push('/profile')}>
-          <Text style={styles.avatarInitials}>SR</Text>
+          <Text style={styles.avatarInitials}>{initials}</Text>
         </TouchableOpacity>
       </View>
 
