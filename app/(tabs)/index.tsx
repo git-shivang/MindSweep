@@ -7,6 +7,7 @@ import {
   transcribeAudio,
 } from '@/services/groqService';
 import { loadTasks, saveTasks, StoredTask } from '@/services/storageService';
+// loadTasks still used inside handleSweepIt for merging with existing tasks
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -108,18 +109,11 @@ export default function HomeScreen() {
   const recordingStartRef = useRef<number>(0);
 
   // ── Animations ──────────────────────────────────────────────
-  const contentOpacity = useSharedValue(0);
-  const contentTranslateY = useSharedValue(16);
   const micScale = useSharedValue(1);
   const micOpacity = useSharedValue(1);
   const sweepScale = useSharedValue(1);
   const waveTick = useSharedValue(0);
   const waveAmplitude = useSharedValue(0);
-
-  useEffect(() => {
-    contentOpacity.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) });
-    contentTranslateY.value = withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) });
-  }, []);
 
   useEffect(() => {
     if (isRecording) {
@@ -150,11 +144,6 @@ export default function HomeScreen() {
     }
   }, [isRecording]);
 
-  const contentStyle = useAnimatedStyle(() => ({
-    opacity: contentOpacity.value,
-    transform: [{ translateY: contentTranslateY.value }],
-  }));
-
   const micAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: micScale.value }],
     opacity: micOpacity.value,
@@ -167,7 +156,7 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadTasks().then((tasks) => setSavedTaskCount(tasks.length));
+      loadTasks().then((tasks) => setSavedTaskCount(tasks.filter((t) => !t.completed).length));
     }, []),
   );
 
@@ -200,10 +189,10 @@ export default function HomeScreen() {
       const existing = await loadTasks();
       const merged = [...tasksToSave, ...existing];
       await saveTasks(merged);
-      setSavedTaskCount(merged.length);
+      setSavedTaskCount(merged.filter((t) => !t.completed).length);
       setThoughts('');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.push('/tasks');
+      router.navigate('/(tabs)/tasks');
     } catch (err) {
       setExtractedTasks([]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -291,45 +280,43 @@ export default function HomeScreen() {
 
       {/* ── Header bar ────────────────────────────────────── */}
       <View style={styles.headerBar}>
-        <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.7}>
-          <MaterialIcons name="menu" size={24} color={Colors.onSurfaceVariant} />
-        </TouchableOpacity>
-
-        <Text style={styles.headerBrand}>MindSweep</Text>
-
+        <View style={styles.headerLeft}>
+          <MaterialCommunityIcons name="brain" size={20} color={Colors.primaryLight} />
+          <Text style={styles.headerBrand}>MindSweep</Text>
+        </View>
         <TouchableOpacity style={styles.avatar} activeOpacity={0.8}>
           <MaterialIcons name="person" size={20} color={Colors.onSurfaceVariant} />
         </TouchableOpacity>
       </View>
 
       {/* ── Main content ──────────────────────────────────── */}
-      <Animated.View style={[styles.content, contentStyle]}>
+      <View style={styles.content}>
 
         <View style={styles.headingBlock}>
-          <View style={styles.brandIconWrap}>
-            <MaterialCommunityIcons name="brain" size={32} color={Colors.primary} />
-          </View>
-          <Text style={styles.title}>MindSweep</Text>
-          <Text style={styles.subtitle}>Speak or type — we'll handle the rest</Text>
+          <Text style={styles.title}>What's on your mind?</Text>
+          <Text style={styles.subtitle}>Offload your thoughts, I'll organise</Text>
         </View>
 
         <View style={styles.inputWrapper}>
-          <TextInput
-            style={[
-              styles.input,
-              isInputFocused && styles.inputFocused,
-              isRecording && styles.inputRecording,
-            ]}
-            multiline
-            placeholder={"Dump your thoughts here...\nAI will extract the tasks."}
-            placeholderTextColor={Colors.outline}
-            value={thoughts}
-            onChangeText={setThoughts}
-            onFocus={() => setIsInputFocused(true)}
-            onBlur={() => setIsInputFocused(false)}
-            textAlignVertical="top"
-            editable={!loading && !isTranscribing}
-          />
+          <View style={[
+            styles.inputContainer,
+            isInputFocused && styles.inputContainerFocused,
+            isRecording && styles.inputContainerRecording,
+          ]}>
+            <TextInput
+              style={styles.input}
+              multiline
+              placeholder="Start typing or tap the mic to dump your thoughts..."
+              placeholderTextColor={Colors.outline}
+              value={thoughts}
+              onChangeText={setThoughts}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
+              textAlignVertical="top"
+              editable={!loading && !isTranscribing}
+            />
+            <Text style={styles.inputPoweredBy}>Powered by AI</Text>
+          </View>
 
           <View style={styles.micColumn}>
             <Animated.View style={micAnimatedStyle}>
@@ -367,7 +354,7 @@ export default function HomeScreen() {
           <View style={styles.statusRow} />
         )}
 
-        <Animated.View style={sweepAnimatedStyle}>
+        <Animated.View style={[sweepAnimatedStyle, styles.buttonWrapper]}>
           <TouchableOpacity
             style={[styles.button, sweepDisabled && styles.buttonDisabled]}
             activeOpacity={0.88}
@@ -389,21 +376,19 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </Animated.View>
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
         {savedTaskCount > 0 ? (
           <TouchableOpacity
-            style={styles.viewTasksButton}
-            activeOpacity={0.8}
-            onPress={() => router.push('/tasks')}>
-            <MaterialIcons name="history" size={18} color={Colors.onSurfaceVariant} />
-            <Text style={styles.viewTasksText}>
-              View saved tasks ({savedTaskCount})
-            </Text>
+            style={styles.taskCountRow}
+            activeOpacity={0.6}
+            onPress={() => router.navigate('/(tabs)/tasks')}>
+            <MaterialIcons name="format-list-bulleted" size={13} color={Colors.onSurfaceVariant} />
+            <Text style={styles.taskCountText}>{savedTaskCount} active task{savedTaskCount === 1 ? '' : 's'}</Text>
           </TouchableOpacity>
         ) : null}
 
-      </Animated.View>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+      </View>
     </SafeAreaView>
   );
 }
@@ -424,11 +409,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.outlineVariant,
   },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
+  headerLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 8,
   },
   headerBrand: {
     fontSize: 17,
@@ -452,29 +436,35 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingBottom: 40,
+    paddingBottom: 110,
   },
   headingBlock: {
     alignItems: 'center',
     marginBottom: 32,
-  },
-  brandIconWrap: {
-    marginBottom: 3,
+    marginTop: -40,
   },
   title: {
-    fontSize: 48,
+    fontSize: 47,
     fontWeight: '800',
     color: Colors.onSurface,
-    letterSpacing: -2,
-    lineHeight: 56,
-    marginBottom: 8,
+    letterSpacing: -1.5,
+    lineHeight: 54,
+    marginBottom: 12,
     textAlign: 'center',
+    opacity: 0.70,
+    textShadowColor: 'rgba(192, 193, 255, 0.22)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 28,
   },
   subtitle: {
     fontSize: 16,
     color: Colors.onSurfaceVariant,
     lineHeight: 24,
     textAlign: 'center',
+    opacity: 0.95,
+    textShadowColor: 'rgba(192, 193, 255, 0.1)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 16,
   },
 
   // ── Input ───────────────────────────────────────────────────
@@ -484,31 +474,42 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 10,
   },
-  input: {
+  inputContainer: {
     flex: 1,
     height: 120,
-    backgroundColor: '#0c0f14',
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
     borderRadius: 16,
+    backgroundColor: Colors.surfaceContainer,
+    borderWidth: 1.5,
+    borderColor: Colors.outlineVariant,
+  },
+  // Focus/recording change ONLY the border colour — no elevation, shadow,
+  // or border-width change. Dynamically adding elevation on Android forces a
+  // native re-layer that blurs the focused TextInput and dismisses the keyboard.
+  inputContainerFocused: {
+    borderColor: Colors.primary,
+  },
+  inputContainerRecording: {
+    borderColor: Colors.error,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: 'transparent',
     paddingHorizontal: 18,
-    paddingVertical: 16,
+    paddingTop: 16,
     fontSize: 16,
     lineHeight: 24,
     color: Colors.onSurface,
   },
-  inputFocused: {
-    borderColor: Colors.primary,
-    borderWidth: 1.5,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  inputRecording: {
-    borderColor: Colors.error,
-    borderWidth: 1.5,
+  inputPoweredBy: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: Colors.outline,
+    paddingBottom: 10,
+    fontWeight: '500',
+    letterSpacing: 0.4,
+    textShadowColor: 'rgba(192, 193, 255, 0.35)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
 
   // ── Mic column (button + waveform) ──────────────────────────
@@ -523,13 +524,14 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     backgroundColor: Colors.primary,
+    opacity: 0.80,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowColor: Colors.primaryLight,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.75,
+    shadowRadius: 16,
+    elevation: 8,
   },
   micButtonActive: {
     backgroundColor: Colors.error,
@@ -540,8 +542,8 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 24,
-    marginBottom: 16,
+    minHeight: 10,
+    marginBottom: 8,
     paddingLeft: 2,
   },
   recordingDot: {
@@ -554,21 +556,30 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 13,
     color: Colors.onSurfaceVariant,
+    textShadowColor: 'rgba(192, 193, 255, 0.4)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
 
   // ── Sweep button ────────────────────────────────────────────
+  buttonWrapper: {
+    alignItems: 'center',
+    marginTop: 0,
+  },
   button: {
     backgroundColor: Colors.primary,
-    paddingVertical: 18,
+    opacity: 0.80,
+    paddingVertical: 16,
+    paddingHorizontal: 52,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 58,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
-    elevation: 7,
+    minHeight: 54,
+    shadowColor: Colors.primaryLight,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.65,
+    shadowRadius: 22,
+    elevation: 8,
   },
   buttonDisabled: {
     opacity: 0.55,
@@ -578,6 +589,9 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     letterSpacing: 0.2,
+    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 12,
   },
   buttonInner: {
     flexDirection: 'row',
@@ -593,6 +607,23 @@ const styles = StyleSheet.create({
     color: Colors.textInverse,
     fontSize: 16,
     fontWeight: '600',
+    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 12,
+  },
+
+  // ── Task count ───────────────────────────────────────────────
+  taskCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 28,
+  },
+  taskCountText: {
+    fontSize: 11,
+    color: Colors.onSurfaceVariant,
+    fontWeight: '500',
   },
 
   // ── Error ───────────────────────────────────────────────────
@@ -602,24 +633,9 @@ const styles = StyleSheet.create({
     color: Colors.error,
     textAlign: 'center',
     lineHeight: 20,
+    textShadowColor: 'rgba(255, 180, 171, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
 
-  // ── View tasks ──────────────────────────────────────────────
-  viewTasksButton: {
-    marginTop: 12,
-    paddingVertical: 17,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
-    backgroundColor: Colors.surfaceContainerHigh,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  viewTasksText: {
-    color: Colors.onSurface,
-    fontSize: 15,
-    fontWeight: '600',
-  },
 });

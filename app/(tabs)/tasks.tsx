@@ -1,17 +1,15 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { ExtractedTask } from '@/services/groqService';
 import { deleteTask, loadTasks, StoredTask, updateTask } from '@/services/storageService';
 import * as Haptics from 'expo-haptics';
-import { useRoute } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   LayoutAnimation,
@@ -33,7 +31,6 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const SPACING = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 } as const;
 
 type Priority = 'High' | 'Medium' | 'Low';
-type TasksRouteParams = { tasks?: string | string[] };
 type Task = StoredTask;
 type EditDraft = { title: string; dueDate: string; priority: Priority };
 type FilterType = 'all' | 'incomplete' | 'completed';
@@ -52,42 +49,11 @@ const PRIORITY_CHIP_BG: Record<Priority, string> = {
 };
 
 const PRIORITIES: Priority[] = ['High', 'Medium', 'Low'];
-
-function mapExtractedToTasks(extracted: ExtractedTask[]): Task[] {
-  const now = Date.now();
-  return extracted.map((item, index) => ({
-    id: `${now}-${index}`,
-    title: item.title,
-    dueDate: item.dueDate ?? 'No due date',
-    priority: item.priority,
-    completed: false,
-    createdAt: now + index,
-  }));
-}
-
-function parseTasksFromParams(tasksParam: string | string[] | undefined): Task[] | null {
-  const raw = Array.isArray(tasksParam) ? tasksParam[0] : tasksParam;
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as ExtractedTask[];
-    if (!Array.isArray(parsed)) return null;
-    return mapExtractedToTasks(parsed);
-  } catch {
-    return null;
-  }
-}
-
-const MOCK_TASKS: Task[] = [
-  { id: '1735689600001', title: 'Call Rahul', dueDate: 'Tomorrow', priority: 'High', completed: false, createdAt: 1735689600001 },
-  { id: '1735776000002', title: 'Submit BI report', dueDate: 'Friday', priority: 'High', completed: false, createdAt: 1735776000002 },
-  { id: '1735862400003', title: 'Buy groceries', dueDate: 'No due date', priority: 'Low', completed: true, createdAt: 1735862400003 },
-];
+const PRIORITY_ORDER: Record<Priority, number> = { High: 0, Medium: 1, Low: 2 };
 
 function formatCreatedAt(ts: number) {
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-
-const PRIORITY_ORDER: Record<Priority, number> = { High: 0, Medium: 1, Low: 2 };
 
 function dueDateScore(dueDate: string): number {
   const d = dueDate.toLowerCase().trim();
@@ -149,10 +115,8 @@ function TaskCard({
       onPress={onPress}
       activeOpacity={0.88}>
 
-      {/* Priority stripe */}
       <View style={[styles.priorityStripe, { backgroundColor: task.completed ? Colors.success : pc }]} />
 
-      {/* ── Collapsed / header row ── */}
       <View style={styles.cardHeader}>
         <TouchableOpacity onPress={onToggleComplete} activeOpacity={0.7} style={styles.checkboxHit}>
           <View style={[
@@ -160,19 +124,15 @@ function TaskCard({
             { borderColor: isExpanded ? pc : Colors.outlineVariant },
             task.completed && { backgroundColor: Colors.success, borderColor: Colors.success },
           ]}>
-            {task.completed
-              ? <MaterialIcons name="check" size={13} color={Colors.textInverse} />
-              : null}
+            {task.completed ? <MaterialIcons name="check" size={13} color={Colors.textInverse} /> : null}
           </View>
         </TouchableOpacity>
 
         <View style={styles.titleArea}>
-          <Text
-            style={[styles.taskTitle, task.completed && styles.taskTitleComplete]}
+          <Text style={[styles.taskTitle, task.completed && styles.taskTitleComplete]}
             numberOfLines={isExpanded ? undefined : 1}>
             {task.title}
           </Text>
-
           {task.completed ? (
             <Text style={styles.completedLabel}>Completed</Text>
           ) : !isExpanded && task.dueDate && task.dueDate !== 'No due date' ? (
@@ -194,11 +154,9 @@ function TaskCard({
         />
       </View>
 
-      {/* ── Expanded content ── */}
       {isExpanded ? (
         <View style={styles.expandedContent}>
           {isEditing ? (
-            // ── Edit mode ────────────────────────────────────
             <View style={styles.editForm}>
               <View style={styles.editField}>
                 <Text style={styles.detailLabel}>TITLE</Text>
@@ -257,9 +215,7 @@ function TaskCard({
               </View>
             </View>
           ) : (
-            // ── View mode ────────────────────────────────────
             <>
-              {/* Dark inner detail panel */}
               <View style={styles.innerPanel}>
                 <View style={styles.detailGrid}>
                   <View style={styles.detailRow}>
@@ -269,9 +225,7 @@ function TaskCard({
                     </View>
                     <View style={styles.detailCell}>
                       <Text style={styles.detailLabel}>PRIORITY</Text>
-                      <Text style={[styles.priorityValue, { color: pc }]}>
-                        {task.priority.toUpperCase()}
-                      </Text>
+                      <Text style={[styles.priorityValue, { color: pc }]}>{task.priority.toUpperCase()}</Text>
                     </View>
                   </View>
                   <View style={styles.detailRow}>
@@ -290,7 +244,6 @@ function TaskCard({
                 </View>
               </View>
 
-              {/* Action buttons */}
               <View style={styles.actions}>
                 <TouchableOpacity style={styles.editButton} onPress={onEditStart} activeOpacity={0.75}>
                   <MaterialIcons name="edit" size={15} color={Colors.primaryLight} />
@@ -316,7 +269,7 @@ function EmptyState() {
     <View style={styles.emptyState}>
       <Text style={styles.emptyIcon}>🌿</Text>
       <Text style={styles.emptyTitle}>All clear</Text>
-      <Text style={styles.emptySubtitle}>No tasks yet. Go back and sweep your thoughts.</Text>
+      <Text style={styles.emptySubtitle}>No tasks yet. Tap Capture to sweep your thoughts.</Text>
     </View>
   );
 }
@@ -326,13 +279,7 @@ function EmptyState() {
 const EMPTY_DRAFT: EditDraft = { title: '', dueDate: '', priority: 'Medium' };
 
 export default function TasksScreen() {
-  const router = useRouter();
-  const route = useRoute();
-  const routeParams = route.params as TasksRouteParams | undefined;
-  const tasksParam = routeParams?.tasks;
-
-  const initialTasks = useMemo(() => parseTasksFromParams(tasksParam) ?? MOCK_TASKS, [tasksParam]);
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>(EMPTY_DRAFT);
@@ -340,6 +287,13 @@ export default function TasksScreen() {
   const [activeSort, setActiveSort] = useState<SortType>('status');
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Reload from storage every time this tab gains focus
+  useFocusEffect(
+    useCallback(() => {
+      loadTasks().then((stored) => setTasks(stored));
+    }, []),
+  );
 
   const counts = useMemo(() => ({
     all: tasks.length,
@@ -355,14 +309,10 @@ export default function TasksScreen() {
     });
     return [...filtered].sort((a, b) => {
       switch (activeSort) {
-        case 'priority':
-          return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
-        case 'dueDate':
-          return dueDateScore(a.dueDate) - dueDateScore(b.dueDate);
-        case 'status':
-          return Number(a.completed) - Number(b.completed);
-        case 'createdAt':
-          return b.createdAt - a.createdAt;
+        case 'priority': return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+        case 'dueDate':  return dueDateScore(a.dueDate) - dueDateScore(b.dueDate);
+        case 'status':   return Number(a.completed) - Number(b.completed);
+        case 'createdAt': return b.createdAt - a.createdAt;
       }
     });
   }, [tasks, activeFilter, activeSort]);
@@ -373,10 +323,7 @@ export default function TasksScreen() {
     return filteredAndSorted.filter((t) => t.title.toLowerCase().includes(q));
   }, [filteredAndSorted, searchQuery]);
 
-  const closeSearch = () => {
-    setIsSearchActive(false);
-    setSearchQuery('');
-  };
+  const closeSearch = () => { setIsSearchActive(false); setSearchQuery(''); };
 
   // Animations
   const headerOpacity = useSharedValue(0);
@@ -399,16 +346,6 @@ export default function TasksScreen() {
     opacity: listOpacity.value,
     transform: [{ translateY: listTranslateY.value }],
   }));
-
-  useEffect(() => {
-    if (tasksParam) return;
-    loadTasks().then((stored) => { if (stored?.length > 0) setTasks(stored); });
-  }, []);
-
-  useEffect(() => {
-    const parsed = parseTasksFromParams(tasksParam);
-    if (parsed) { setTasks(parsed); setExpandedId(null); setEditingId(null); }
-  }, [tasksParam]);
 
   const completedCount = tasks.filter((t) => t.completed).length;
 
@@ -469,12 +406,8 @@ export default function TasksScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
 
-      {/* ── Nav header ── */}
+      {/* ── Nav bar (no back button in tab mode) ── */}
       <Animated.View style={[styles.navBar, headerStyle]}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={20} color={Colors.onSurface} />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
         <Text style={styles.navTitle}>MindSweep</Text>
         <View style={styles.avatar}>
           <MaterialIcons name="person" size={18} color={Colors.onSurfaceVariant} />
@@ -620,12 +553,8 @@ export default function TasksScreen() {
 // ── Styles ────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
 
-  // Nav bar
   navBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -634,16 +563,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.outlineVariant,
-  },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  backText: {
-    fontSize: 15,
-    color: Colors.onSurface,
-    fontWeight: '500',
   },
   navTitle: {
     fontSize: 17,
@@ -662,12 +581,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Stats header
-  statsHeader: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 16,
-  },
+  statsHeader: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16 },
   statsTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -681,12 +595,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
-  searchIconBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  searchIconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   searchBar: {
     marginTop: 14,
     height: 42,
@@ -698,24 +607,51 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.onSurface,
   },
-  statsCount: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.onSurfaceVariant,
-    letterSpacing: -0.5,
-  },
-  statsCountAccent: {
-    color: Colors.primaryLight,
-  },
+  statsCount: { fontSize: 28, fontWeight: '700', color: Colors.onSurfaceVariant, letterSpacing: -0.5 },
+  statsCountAccent: { color: Colors.primaryLight },
 
-  // List
   listContainer: { flex: 1 },
-  list: {
-    paddingHorizontal: 20,
-    paddingBottom: SPACING.xl,
-  },
+  list: { paddingHorizontal: 20, paddingBottom: 110 },
 
-  // Card
+  filterScroll: { paddingLeft: 20, marginBottom: 10, flexGrow: 0 },
+  filterScrollContent: { flexDirection: 'row', gap: 8, paddingRight: 20 },
+  filterTab: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+  },
+  filterTabActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  filterTabText: { fontSize: 13, fontWeight: '500', color: Colors.onSurfaceVariant },
+  filterTabTextActive: { color: Colors.textInverse, fontWeight: '600' },
+
+  sortScroll: { flexGrow: 0, marginBottom: 14 },
+  sortBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingRight: 20, gap: 8 },
+  sortLabel: { fontSize: 12, color: Colors.outline, fontWeight: '500', marginRight: 2 },
+  sortChip: {
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: Colors.surfaceContainer,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  sortChipActive: { borderColor: Colors.primaryLight },
+  sortChipText: { fontSize: 12, color: Colors.outline, fontWeight: '500' },
+  sortChipTextActive: { color: Colors.primaryLight, fontWeight: '600' },
+
+  filterEmptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 80 },
+  filterEmptyIcon: { fontSize: 40, marginBottom: 14 },
+  filterEmptyTitle: { fontSize: 18, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 8, textTransform: 'capitalize' },
+  filterEmptySubtitle: { fontSize: 14, color: Colors.outline, textAlign: 'center' },
+
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 48, paddingBottom: 80 },
+  emptyIcon: { fontSize: 52, marginBottom: 16 },
+  emptyTitle: { fontSize: 22, fontWeight: '700', color: Colors.onSurface, marginBottom: 10 },
+  emptySubtitle: { fontSize: 15, color: Colors.outline, textAlign: 'center', lineHeight: 22 },
+
   card: {
     backgroundColor: Colors.surfaceContainer,
     borderRadius: 16,
@@ -726,334 +662,46 @@ const styles = StyleSheet.create({
     paddingLeft: SPACING.lg + 4,
     overflow: 'hidden',
   },
-  priorityStripe: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  checkboxHit: {
-    padding: 2,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  titleArea: {
-    flex: 1,
-    gap: 3,
-  },
-  taskTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.onSurface,
-    lineHeight: 21,
-  },
-  taskTitleComplete: {
-    textDecorationLine: 'line-through',
-    color: Colors.outline,
-  },
-  completedLabel: {
-    fontSize: 12,
-    color: Colors.outline,
-    fontWeight: '400',
-  },
-  dueDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  dueDateText: {
-    fontSize: 12,
-    color: Colors.outline,
-  },
-  priorityChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  priorityChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
+  priorityStripe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  checkboxHit: { padding: 2 },
+  checkbox: { width: 22, height: 22, borderRadius: 4, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  titleArea: { flex: 1, gap: 3 },
+  taskTitle: { fontSize: 15, fontWeight: '600', color: Colors.onSurface, lineHeight: 21 },
+  taskTitleComplete: { textDecorationLine: 'line-through', color: Colors.outline },
+  completedLabel: { fontSize: 12, color: Colors.outline, fontWeight: '400' },
+  dueDateRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dueDateText: { fontSize: 12, color: Colors.outline },
+  priorityChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  priorityChipText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
 
-  // Expanded
-  expandedContent: {
-    marginTop: SPACING.md,
-    gap: SPACING.sm,
-  },
-  innerPanel: {
-    backgroundColor: Colors.backgroundDim,
-    borderRadius: 12,
-    padding: SPACING.md,
-  },
-  detailGrid: {
-    gap: SPACING.md,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  detailCell: {
-    flex: 1,
-    gap: 4,
-  },
-  detailLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.outline,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  detailValue: {
-    fontSize: 14,
-    color: Colors.onSurface,
-    fontWeight: '500',
-  },
-  priorityValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
+  expandedContent: { marginTop: SPACING.md, gap: SPACING.sm },
+  innerPanel: { backgroundColor: Colors.backgroundDim, borderRadius: 12, padding: SPACING.md },
+  detailGrid: { gap: SPACING.md },
+  detailRow: { flexDirection: 'row', gap: SPACING.md },
+  detailCell: { flex: 1, gap: 4 },
+  detailLabel: { fontSize: 10, fontWeight: '600', color: Colors.outline, letterSpacing: 0.8, textTransform: 'uppercase' },
+  detailValue: { fontSize: 14, color: Colors.onSurface, fontWeight: '500' },
+  priorityValue: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
 
-  // Actions
-  actions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.xs,
-  },
-  editButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 11,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.primaryLight + '55',
-    backgroundColor: 'rgba(192, 193, 255, 0.06)',
-  },
-  editButtonText: {
-    color: Colors.primaryLight,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  deleteButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 11,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.error + '55',
-    backgroundColor: 'rgba(255, 180, 171, 0.06)',
-  },
-  deleteButtonText: {
-    color: Colors.error,
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  actions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs },
+  editButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: Colors.primaryLight + '55', backgroundColor: 'rgba(192, 193, 255, 0.06)' },
+  editButtonText: { color: Colors.primaryLight, fontSize: 14, fontWeight: '600' },
+  deleteButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: Colors.error + '55', backgroundColor: 'rgba(255, 180, 171, 0.06)' },
+  deleteButtonText: { color: Colors.error, fontSize: 14, fontWeight: '600' },
 
-  // Edit form
   editForm: { gap: SPACING.md },
   editField: { gap: 6 },
-  editInput: {
-    backgroundColor: Colors.backgroundDim,
-    borderWidth: 1.5,
-    borderColor: Colors.outlineVariant,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: Colors.onSurface,
-    lineHeight: 22,
-  },
-  prioritySelector: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  priorityPill: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    alignItems: 'center',
-  },
-  priorityPillText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  editActions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.xs,
-  },
-  saveButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-  },
+  editInput: { backgroundColor: Colors.backgroundDim, borderWidth: 1.5, borderColor: Colors.outlineVariant, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, color: Colors.onSurface, lineHeight: 22 },
+  prioritySelector: { flexDirection: 'row', gap: SPACING.sm },
+  priorityPill: { flex: 1, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5, alignItems: 'center' },
+  priorityPillText: { fontSize: 12, fontWeight: '700' },
+  editActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs },
+  saveButton: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: Colors.primary, alignItems: 'center' },
   saveButtonDisabled: { opacity: 0.4 },
-  saveButtonText: {
-    color: Colors.textInverse,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  cancelEditButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
-    alignItems: 'center',
-  },
-  cancelEditButtonText: {
-    color: Colors.onSurfaceVariant,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // ── Filter tabs ──────────────────────────────────────────────
-  filterScroll: {
-    paddingLeft: 20,
-    marginBottom: 10,
-    flexGrow: 0,
-  },
-  filterScrollContent: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingRight: 20,
-  },
-  filterTab: {
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: Colors.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
-  },
-  filterTabActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  filterTabText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.onSurfaceVariant,
-  },
-  filterTabTextActive: {
-    color: Colors.textInverse,
-    fontWeight: '600',
-  },
-
-  // ── Sort bar ─────────────────────────────────────────────────
-  sortScroll: {
-    flexGrow: 0,
-    marginBottom: 14,
-  },
-  sortBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingRight: 20,
-    gap: 8,
-  },
-  sortLabel: {
-    fontSize: 12,
-    color: Colors.outline,
-    fontWeight: '500',
-    marginRight: 2,
-  },
-  sortChip: {
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: Colors.surfaceContainer,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  sortChipActive: {
-    borderColor: Colors.primaryLight,
-  },
-  sortChipText: {
-    fontSize: 12,
-    color: Colors.outline,
-    fontWeight: '500',
-  },
-  sortChipTextActive: {
-    color: Colors.primaryLight,
-    fontWeight: '600',
-  },
-
-  // ── Filter empty state ───────────────────────────────────────
-  filterEmptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 80,
-  },
-  filterEmptyIcon: {
-    fontSize: 40,
-    marginBottom: 14,
-  },
-  filterEmptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.onSurfaceVariant,
-    marginBottom: 8,
-    textTransform: 'capitalize',
-  },
-  filterEmptySubtitle: {
-    fontSize: 14,
-    color: Colors.outline,
-    textAlign: 'center',
-  },
-
-  // Empty state
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 48,
-    paddingBottom: 80,
-  },
-  emptyIcon: { fontSize: 52, marginBottom: 16 },
-  emptyTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.onSurface,
-    marginBottom: 10,
-  },
-  emptySubtitle: {
-    fontSize: 15,
-    color: Colors.outline,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
+  saveButtonText: { color: Colors.textInverse, fontSize: 14, fontWeight: '700' },
+  cancelEditButton: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: Colors.outlineVariant, alignItems: 'center' },
+  cancelEditButtonText: { color: Colors.onSurfaceVariant, fontSize: 14, fontWeight: '600' },
 });
