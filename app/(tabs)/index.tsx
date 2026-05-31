@@ -1,18 +1,18 @@
 import { Colors } from '@/constants/colors';
 import {
-  extractTasksFromGroq,
   ExtractedTask,
+  extractTasksFromGroq,
   GroqServiceError,
 } from '@/services/groqService';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { loadTasks, saveTasks, StoredTask } from '@/services/storageService';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
-  View,
+  TouchableOpacity
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,6 +22,13 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [extractedTasks, setExtractedTasks] = useState<ExtractedTask[]>([]);
+  const [savedTaskCount, setSavedTaskCount] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadTasks().then((tasks) => setSavedTaskCount(tasks.length));
+    }, []),
+  );
 
   const handleSweepIt = async () => {
     const brainDump = thoughts.trim();
@@ -33,24 +40,34 @@ export default function HomeScreen() {
     setError(null);
 
     try {
-      const tasks = await extractTasksFromGroq(brainDump);
-      setExtractedTasks(tasks);
+  const extracted = await extractTasksFromGroq(brainDump);
+  setExtractedTasks(extracted);
+  const now = Date.now();
+  const tasksToSave: StoredTask[] = extracted.map((item, i) => ({
+    id: `${now}-${i}`,
+    title: item.title,
+    dueDate: item.dueDate ?? 'No due date',
+    priority: item.priority,
+    completed: false,
+    createdAt: now + i,
+  }));
+  const existing = await loadTasks();
+  const merged = [...tasksToSave, ...existing];
+  await saveTasks(merged);
+  setSavedTaskCount(merged.length);
+  setThoughts('');
+  router.push('/tasks');
+} catch (err) {
+  setExtractedTasks([]);
 
-      router.push({
-        pathname: '/tasks',
-        params: { tasks: JSON.stringify(tasks) },
-      });
-    } catch (err) {
-      setExtractedTasks([]);
-
-      if (err instanceof GroqServiceError) {
-        setError(err.message);
-      } else {
-        setError('Something went wrong while extracting tasks. Please try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
+  if (err instanceof GroqServiceError) {
+    setError(err.message);
+  } else {
+    setError('Something went wrong while extracting tasks. Please try again.');
+  }
+} finally {
+  setLoading(false);
+}
   };
 
   return (
@@ -82,6 +99,17 @@ export default function HomeScreen() {
       </TouchableOpacity>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+      {savedTaskCount > 0 ? (
+        <TouchableOpacity
+          style={styles.viewTasksButton}
+          activeOpacity={0.8}
+          onPress={() => router.push('/tasks')}>
+          <Text style={styles.viewTasksText}>
+            View saved tasks ({savedTaskCount})
+          </Text>
+        </TouchableOpacity>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -149,5 +177,18 @@ const styles = StyleSheet.create({
     color: Colors.error,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  viewTasksButton: {
+    marginTop: 20,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    alignItems: 'center',
+  },
+  viewTasksText: {
+    color: Colors.primary,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

@@ -1,7 +1,8 @@
 import { Colors } from '@/constants/colors';
 import { ExtractedTask } from '@/services/groqService';
-import { useRouter } from 'expo-router';
+import { deleteTask, loadTasks, StoredTask, updateTask } from '@/services/storageService';
 import { useRoute } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
@@ -35,14 +36,7 @@ type TasksRouteParams = {
   tasks?: string | string[];
 };
 
-type Task = {
-  id: string;
-  title: string;
-  dueDate: string;
-  priority: Priority;
-  completed: boolean;
-  createdAt: number;
-};
+type Task = StoredTask;
 
 function mapExtractedToTasks(extracted: ExtractedTask[]): Task[] {
   const now = Date.now();
@@ -58,15 +52,11 @@ function mapExtractedToTasks(extracted: ExtractedTask[]): Task[] {
 
 function parseTasksFromParams(tasksParam: string | string[] | undefined): Task[] | null {
   const raw = Array.isArray(tasksParam) ? tasksParam[0] : tasksParam;
-  if (!raw) {
-    return null;
-  }
+  if (!raw) return null;
 
   try {
     const parsed = JSON.parse(raw) as ExtractedTask[];
-    if (!Array.isArray(parsed)) {
-      return null;
-    }
+    if (!Array.isArray(parsed)) return null;
     return mapExtractedToTasks(parsed);
   } catch {
     return null;
@@ -137,9 +127,10 @@ type TaskCardProps = {
   isExpanded: boolean;
   onPress: () => void;
   onToggleComplete: () => void;
+  onDelete: () => void;
 };
 
-function TaskCard({ task, isExpanded, onPress, onToggleComplete }: TaskCardProps) {
+function TaskCard({ task, isExpanded, onPress, onToggleComplete, onDelete }: TaskCardProps) {
   const badge = PRIORITY_STYLES[task.priority];
 
   return (
@@ -200,7 +191,7 @@ function TaskCard({ task, isExpanded, onPress, onToggleComplete }: TaskCardProps
             <TouchableOpacity style={styles.editButton} activeOpacity={0.7}>
               <Text style={styles.editButtonText}>Edit</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.deleteButton} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.deleteButton} onPress={onDelete} activeOpacity={0.7}>
               <Text style={styles.deleteButtonText}>Delete</Text>
             </TouchableOpacity>
           </View>
@@ -224,13 +215,26 @@ export default function TasksScreen() {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Load from storage on mount if no params
+  useEffect(() => {
+    if (tasksParam) return;
+
+    const loadFromStorage = async () => {
+      const stored = await loadTasks();
+      if (stored && stored.length > 0) {
+        setTasks(stored);
+      }
+      // If nothing in storage either, initialTasks already has MOCK_TASKS
+    };
+
+    loadFromStorage();
+  }, []);
+
+  // Sync when new tasks arrive via params
   useEffect(() => {
     const parsed = parseTasksFromParams(tasksParam);
     if (parsed) {
       setTasks(parsed);
-      setExpandedId(null);
-    } else if (!tasksParam) {
-      setTasks(MOCK_TASKS);
       setExpandedId(null);
     }
   }, [tasksParam]);
@@ -243,10 +247,19 @@ export default function TasksScreen() {
   const handleToggleComplete = (id: string) => {
     animateLayout();
     setTasks((prev) =>
-      prev.map((task) =>
-        task.id === id ? { ...task, completed: !task.completed } : task,
-      ),
+      prev.map((task) => {
+        if (task.id !== id) return task;
+        const updated = { ...task, completed: !task.completed };
+        updateTask(updated);
+        return updated;
+      }),
     );
+  };
+
+  const handleDelete = (id: string) => {
+    animateLayout();
+    setTasks((prev) => prev.filter((task) => task.id !== id));
+    deleteTask(id);
   };
 
   return (
@@ -264,7 +277,7 @@ export default function TasksScreen() {
 
       <FlatList
         data={tasks}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => item.id ?? `task-${index}`}
         extraData={tasks}
         renderItem={({ item }) => (
           <TaskCard
@@ -272,6 +285,7 @@ export default function TasksScreen() {
             isExpanded={expandedId === item.id}
             onPress={() => handleCardPress(item.id)}
             onToggleComplete={() => handleToggleComplete(item.id)}
+            onDelete={() => handleDelete(item.id)}
           />
         )}
         contentContainerStyle={styles.list}

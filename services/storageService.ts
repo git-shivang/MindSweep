@@ -1,29 +1,34 @@
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-interface Task {
+export interface StoredTask {
   id: string;
   title: string;
-  isCompleted: boolean;
+  dueDate: string;
+  priority: 'High' | 'Medium' | 'Low';
+  completed: boolean;
+  createdAt: number;
 }
 
 const STORAGE_KEY = 'MINDSWEEP_TASKS';
 
-export const saveTasks = async (tasks: Task[]): Promise<void> => {
+export const saveTasks = async (tasks: StoredTask[]): Promise<void> => {
   try {
-    const jsonValue = JSON.stringify(tasks);
-    await AsyncStorage.setItem(STORAGE_KEY, jsonValue);
+    const json = JSON.stringify(tasks);
+    await AsyncStorage.setItem(STORAGE_KEY, json);
+    console.log('[Storage] saveTasks: saved', tasks.length, 'tasks');
   } catch (e) {
-    console.error('Error saving tasks', e);
+    console.error('[Storage] saveTasks: failed', e);
   }
 };
 
-export const loadTasks = async (): Promise<Task[]> => {
+export const loadTasks = async (): Promise<StoredTask[]> => {
   try {
     const jsonValue = await AsyncStorage.getItem(STORAGE_KEY);
-    return jsonValue != null ? JSON.parse(jsonValue) : [];
+    const tasks = jsonValue != null ? JSON.parse(jsonValue) : [];
+    console.log('[Storage] loadTasks: loaded', tasks.length, 'tasks');
+    return tasks;
   } catch (e) {
-    console.error('Error loading tasks', e);
+    console.error('[Storage] loadTasks: failed', e);
     return [];
   }
 };
@@ -31,19 +36,18 @@ export const loadTasks = async (): Promise<Task[]> => {
 export const deleteTask = async (id: string): Promise<void> => {
   try {
     const tasks = await loadTasks();
-    const updatedTasks = tasks.filter(task => task.id !== id);
-    await saveTasks(updatedTasks);
+    await saveTasks(tasks.filter((t) => t.id !== id));
   } catch (e) {
     console.error('Error deleting task', e);
   }
 };
 
-export const updateTask = async (updatedTask: Task): Promise<void> => {
+export const updateTask = async (updatedTask: StoredTask): Promise<void> => {
   try {
     const tasks = await loadTasks();
-    const taskIndex = tasks.findIndex(task => task.id === updatedTask.id);
-    if (taskIndex > -1) {
-      tasks[taskIndex] = updatedTask;
+    const index = tasks.findIndex((t) => t.id === updatedTask.id);
+    if (index > -1) {
+      tasks[index] = updatedTask;
       await saveTasks(tasks);
     }
   } catch (e) {
