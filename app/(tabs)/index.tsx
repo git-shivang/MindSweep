@@ -284,8 +284,8 @@ export default function HomeScreen() {
           <MaterialCommunityIcons name="brain" size={20} color={Colors.primaryLight} />
           <Text style={styles.headerBrand}>MindSweep</Text>
         </View>
-        <TouchableOpacity style={styles.avatar} activeOpacity={0.8}>
-          <MaterialIcons name="person" size={20} color={Colors.onSurfaceVariant} />
+        <TouchableOpacity style={styles.avatar} activeOpacity={0.8} onPress={() => router.push('/profile')}>
+          <Text style={styles.avatarInitials}>SR</Text>
         </TouchableOpacity>
       </View>
 
@@ -424,11 +424,15 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textInverse,
+    letterSpacing: 0.5,
   },
 
   // ── Main content ────────────────────────────────────────────

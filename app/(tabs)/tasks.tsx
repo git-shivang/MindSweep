@@ -2,7 +2,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { deleteTask, loadTasks, StoredTask, updateTask } from '@/services/storageService';
 import * as Haptics from 'expo-haptics';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -279,6 +279,7 @@ function EmptyState() {
 const EMPTY_DRAFT: EditDraft = { title: '', dueDate: '', priority: 'Medium' };
 
 export default function TasksScreen() {
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -409,9 +410,9 @@ export default function TasksScreen() {
       {/* ── Nav bar (no back button in tab mode) ── */}
       <Animated.View style={[styles.navBar, headerStyle]}>
         <Text style={styles.navTitle}>MindSweep</Text>
-        <View style={styles.avatar}>
-          <MaterialIcons name="person" size={18} color={Colors.onSurfaceVariant} />
-        </View>
+        <TouchableOpacity style={styles.avatar} activeOpacity={0.8} onPress={() => router.push('/profile')}>
+          <Text style={styles.avatarInitials}>SR</Text>
+        </TouchableOpacity>
       </Animated.View>
 
       {/* ── Stats header ── */}
@@ -574,11 +575,15 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: Colors.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textInverse,
+    letterSpacing: 0.5,
   },
 
   statsHeader: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16 },
