@@ -106,6 +106,7 @@ export default function HomeScreen() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [initials, setInitials] = useState('?');
+  const [firstName, setFirstName] = useState('');
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingStartRef = useRef<number>(0);
 
@@ -158,7 +159,10 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       loadTasks().then((tasks) => setSavedTaskCount(tasks.filter((t) => !t.completed).length));
-      getUserName().then((name) => setInitials(name ? getInitials(name) : '?'));
+      getUserName().then((name) => {
+        setInitials(name ? getInitials(name) : '?');
+        setFirstName(name ? name.trim().split(/\s+/)[0] : '');
+      });
     }, []),
   );
 
@@ -295,6 +299,9 @@ export default function HomeScreen() {
       <View style={styles.content}>
 
         <View style={styles.headingBlock}>
+          {firstName ? (
+            <Text style={styles.greeting}>Hi {firstName} 👋</Text>
+          ) : null}
           <Text style={styles.title}>What's on your mind?</Text>
           <Text style={styles.subtitle}>Offload your thoughts, I'll organise</Text>
         </View>
@@ -382,7 +389,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={styles.taskCountRow}
             activeOpacity={0.6}
-            onPress={() => router.navigate('/(tabs)/tasks')}>
+            onPress={() => router.navigate('/(tabs)/tasks?filter=incomplete')}>
             <MaterialIcons name="format-list-bulleted" size={13} color={Colors.onSurfaceVariant} />
             <Text style={styles.taskCountText}>{savedTaskCount} active task{savedTaskCount === 1 ? '' : 's'}</Text>
           </TouchableOpacity>
@@ -448,6 +455,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
     marginTop: -40,
+  },
+  greeting: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: Colors.onSurfaceVariant,
+    marginBottom: 6,
+    textAlign: 'center',
+    opacity: 0.80,
   },
   title: {
     fontSize: 47,
