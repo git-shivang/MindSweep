@@ -1,7 +1,7 @@
 import { TASK_EXTRACTION_PROMPT } from '@/constants/prompts';
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.1-70b-versatile';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 export type ExtractedTask = {
   title: string;
@@ -41,17 +41,6 @@ type GroqChatCompletionResponse = {
 };
 
 const PRIORITIES = new Set(['High', 'Medium', 'Low']);
-
-function getGroqApiKey(): string {
-  const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY;
-  if (!apiKey) {
-    throw new GroqServiceError(
-      'Groq API key is missing. Set EXPO_PUBLIC_GROQ_API_KEY in your environment.',
-      'MISSING_API_KEY',
-    );
-  }
-  return apiKey;
-}
 
 function normalizeDueDate(value: unknown): string | null {
   if (value === null || value === undefined || value === '') {
@@ -144,7 +133,13 @@ export async function extractTasksFromGroq(brainDump: string): Promise<Extracted
     return [];
   }
 
-  const apiKey = getGroqApiKey();
+  const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY;
+  if (!apiKey?.trim()) {
+    throw new GroqServiceError(
+      'Groq API key is missing. Set EXPO_PUBLIC_GROQ_API_KEY in your .env file.',
+      'MISSING_API_KEY',
+    );
+  }
 
   let response: Response;
 
@@ -152,7 +147,7 @@ export async function extractTasksFromGroq(brainDump: string): Promise<Extracted
     response = await fetch(GROQ_API_URL, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey.trim()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

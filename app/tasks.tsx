@@ -1,6 +1,8 @@
 import { Colors } from '@/constants/colors';
+import { ExtractedTask } from '@/services/groqService';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRoute } from '@react-navigation/native';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   LayoutAnimation,
@@ -29,6 +31,10 @@ const SPACING = {
 
 type Priority = 'High' | 'Medium' | 'Low';
 
+type TasksRouteParams = {
+  tasks?: string | string[];
+};
+
 type Task = {
   id: string;
   title: string;
@@ -37,6 +43,35 @@ type Task = {
   completed: boolean;
   createdAt: number;
 };
+
+function mapExtractedToTasks(extracted: ExtractedTask[]): Task[] {
+  const now = Date.now();
+  return extracted.map((item, index) => ({
+    id: `${now}-${index}`,
+    title: item.title,
+    dueDate: item.dueDate ?? 'No due date',
+    priority: item.priority,
+    completed: false,
+    createdAt: now + index,
+  }));
+}
+
+function parseTasksFromParams(tasksParam: string | string[] | undefined): Task[] | null {
+  const raw = Array.isArray(tasksParam) ? tasksParam[0] : tasksParam;
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as ExtractedTask[];
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+    return mapExtractedToTasks(parsed);
+  } catch {
+    return null;
+  }
+}
 
 const MOCK_TASKS: Task[] = [
   {
@@ -177,8 +212,28 @@ function TaskCard({ task, isExpanded, onPress, onToggleComplete }: TaskCardProps
 
 export default function TasksScreen() {
   const router = useRouter();
-  const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS);
+  const route = useRoute();
+  const routeParams = route.params as TasksRouteParams | undefined;
+  const tasksParam = routeParams?.tasks;
+
+  const initialTasks = useMemo(
+    () => parseTasksFromParams(tasksParam) ?? MOCK_TASKS,
+    [tasksParam],
+  );
+
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const parsed = parseTasksFromParams(tasksParam);
+    if (parsed) {
+      setTasks(parsed);
+      setExpandedId(null);
+    } else if (!tasksParam) {
+      setTasks(MOCK_TASKS);
+      setExpandedId(null);
+    }
+  }, [tasksParam]);
 
   const handleCardPress = (id: string) => {
     animateLayout();
