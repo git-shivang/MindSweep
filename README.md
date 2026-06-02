@@ -256,6 +256,12 @@ The finished APK can be installed directly on any Android device. iOS requires a
 
 ---
 
+## Demo Video
+
+Watch MindSweep in action: [screens/MindSweep_v1_Demo.mp4](screens/MindSweep_v1_Demo.mp4)
+
+---
+
 ## 👤 Contact & Feedback
 
 **Author:** Shivang Rai
