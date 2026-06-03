@@ -248,30 +248,31 @@ The finished APK can be installed directly on any Android device. iOS requires a
 
 ## 📸 Screenshots
 
-> *Add screenshots here — Home, TaskList, Profile, Onboarding*
 
-| Home | Tasks | Profile | Settings |
-|---|---|---|---|
-| *(screenshot)* | *(screenshot)* | *(screenshot)* | *(screenshot)* |
+| Onboarding | Home | Tasks | Profile | Settings |
+|---|---|---|---|---|
+| [Onboarding](screens/Onboarding.png) | [Home](screens/Home.png) | [Tasks](screens/TaskList.png) | [Profile](screens/ProfilePage.png) | [Settings](screens/Settings.png) |
 
 ---
 
 ## Demo Video
 
-Watch MindSweep in action: [screens/MindSweep_v1_Demo.mp4](screens/MindSweep_v1_Demo.mp4)
+Watch MindSweep in action: [Demo](screens/MindSweep_v1_Demo.mp4)
 
 ---
 
 ## 👤 Contact & Feedback
 
 **Author:** Shivang Rai
+
 **Built:** June 2026
-**Feedback:** [mail2me.shivang@gmail.com](mailto:mail2me.shivang@gmail.com)
+
+**Feedback:** [Click to Email](mailto:mail2me.shivang@gmail.com)
 
 ---
 
 <p align="center">
   Built with 🧠 + <a href="https://groq.com">Groq AI</a> + <a href="https://expo.dev">Expo</a>
   <br/>
-  <em>Vibe coded with <a href="https://claude.ai">Claude Code</a></em>
+  <em>Vibe coded with <a href="https://claude.ai">Claude Code</a> + <a href="https://cursor.com">Cursor</a></em>
 </p>
